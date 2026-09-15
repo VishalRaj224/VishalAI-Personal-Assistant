@@ -1,0 +1,130 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated user profile data",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "format": "email", "description": "User email address" },
+        "displayName": { "type": "string", "description": "Display name of the user" },
+        "photoURL": { "type": "string", "description": "Avatar photo URL" },
+        "createdAt": { "type": "string", "description": "ISO timestamp of account creation" },
+        "lastLoginAt": { "type": "string", "description": "ISO timestamp of recent login" }
+      },
+      "required": ["uid", "email"]
+    },
+    "UserSettings": {
+      "title": "UserSettings",
+      "description": "Assistant configurations and preferences",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Owner UID" },
+        "assistantName": { "type": "string", "description": "Name of the AI assistant" },
+        "wakeWord": { "type": "string", "description": "Voice wake phrase" },
+        "currentPermissionLevel": { "type": "number", "description": "Active permission tier 1-5" },
+        "privacyMode": { "type": "boolean", "description": "Hardware killswitch for mic and AI" },
+        "voiceAccessEnabled": { "type": "boolean", "description": "Whether voice input is armed" },
+        "ttsVoice": { "type": "string", "description": "Text-to-speech voice key" },
+        "language": { "type": "string", "description": "Assistant language", "enum": ["en", "hi", "hinglish"] },
+        "activePlatform": { "type": "string", "description": "Active target platform" },
+        "customTabLabels": { "type": "object", "description": "Custom user-renamed tab labels mapped by tab id" },
+        "updatedAt": { "type": "string", "description": "ISO timestamp of last update" }
+      },
+      "required": ["userId", "assistantName", "currentPermissionLevel"]
+    },
+    "UserDevice": {
+      "title": "UserDevice",
+      "description": "Authorized connected device profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique device ID" },
+        "userId": { "type": "string", "description": "Owner UID" },
+        "name": { "type": "string", "description": "Device name" },
+        "platform": { "type": "string", "enum": ["macOS", "Windows", "Linux", "Android", "Web"] },
+        "status": { "type": "string", "enum": ["online", "offline", "busy"] },
+        "lastSeen": { "type": "string" },
+        "ip": { "type": "string" },
+        "authorized": { "type": "boolean" },
+        "version": { "type": "string" }
+      },
+      "required": ["id", "userId", "name", "platform", "authorized"]
+    },
+    "UserActivityLog": {
+      "title": "UserActivityLog",
+      "description": "Audit and activity log entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "command": { "type": "string" },
+        "category": { "type": "string", "enum": ["app", "file", "voice", "system", "security", "web", "media"] },
+        "status": { "type": "string", "enum": ["success", "pending_confirmation", "denied", "failed"] },
+        "permissionLevel": { "type": "number" },
+        "details": { "type": "string" },
+        "device": { "type": "string" }
+      },
+      "required": ["id", "userId", "timestamp", "command", "status"]
+    },
+    "MediaCreation": {
+      "title": "MediaCreation",
+      "description": "AI created images, videos, audio, and transcriptions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "type": { "type": "string", "enum": ["image", "video", "music_clip", "music_track", "transcription"] },
+        "prompt": { "type": "string" },
+        "resultUrl": { "type": "string" },
+        "model": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "aspectRatio": { "type": "string" },
+        "details": { "type": "string" }
+      },
+      "required": ["id", "userId", "type", "prompt", "model", "createdAt"]
+    },
+    "TabNavigationLabels": {
+      "title": "TabNavigationLabels",
+      "description": "Custom user-renamed tab labels mapped by tab id",
+      "type": "object",
+      "properties": {
+        "labels": {
+          "type": "object",
+          "description": "Map of tab id to custom label name"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp of last rename"
+        }
+      },
+      "required": ["labels"]
+    }
+  },
+  "firestore": {
+    "/tabLabels/{labelId}": {
+      "schema": "TabNavigationLabels",
+      "description": "Custom navigation tab labels for the workstation"
+    },
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile document storing basic user details"
+    },
+    "/users/{userId}/settings/{settingId}": {
+      "schema": "UserSettings",
+      "description": "Assistant configuration documents for the user"
+    },
+    "/users/{userId}/devices/{deviceId}": {
+      "schema": "UserDevice",
+      "description": "Connected cross-platform devices owned by user"
+    },
+    "/users/{userId}/activityLogs/{logId}": {
+      "schema": "UserActivityLog",
+      "description": "Security and command audit logs for the user"
+    },
+    "/users/{userId}/mediaCreations/{mediaId}": {
+      "schema": "MediaCreation",
+      "description": "AI media items created by the user (images, video, music, transcription)"
+    }
+  }
+}

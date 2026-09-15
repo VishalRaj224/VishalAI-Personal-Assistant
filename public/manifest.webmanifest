@@ -1,0 +1,27 @@
+{
+  "id": "/",
+  "name": "Astra - Personal AI Assistant",
+  "short_name": "Astra AI",
+  "description": "Cross-platform personal AI assistant with real-time voice, system automation, and Gemini intelligence for Vishal Raj Gond.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "categories": ["utilities", "productivity"],
+  "icons": [
+    {
+      "src": "/vr-logo.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/vr-logo.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

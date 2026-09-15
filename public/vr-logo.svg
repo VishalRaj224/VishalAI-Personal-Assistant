@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <radialGradient id="bgGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#080e1e"/>
+      <stop offset="70%" stop-color="#03060d"/>
+      <stop offset="100%" stop-color="#000205"/>
+    </radialGradient>
+
+    <!-- Outer Rim Gradient -->
+    <linearGradient id="rimGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00e5ff"/>
+      <stop offset="50%" stop-color="#0099ff"/>
+      <stop offset="100%" stop-color="#0051ff"/>
+    </linearGradient>
+
+    <!-- Crown & R Gradient -->
+    <linearGradient id="cyanBlueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="30%" stop-color="#00d4ff"/>
+      <stop offset="100%" stop-color="#0284c7"/>
+    </linearGradient>
+
+    <!-- V Silver Metallic Gradient -->
+    <linearGradient id="silverGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="40%" stop-color="#f1f5f9"/>
+      <stop offset="75%" stop-color="#cbd5e1"/>
+      <stop offset="100%" stop-color="#94a3b8"/>
+    </linearGradient>
+
+    <!-- Orbit Ring Gradient -->
+    <linearGradient id="orbitGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0284c7" stop-opacity="0.9"/>
+      <stop offset="40%" stop-color="#00f2fe" stop-opacity="1"/>
+      <stop offset="80%" stop-color="#38bdf8" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#0ea5e9" stop-opacity="0.8"/>
+    </linearGradient>
+
+    <!-- Glow Filter -->
+    <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+
+    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Circular Base -->
+  <circle cx="256" cy="256" r="236" fill="url(#bgGrad)" />
+
+  <!-- Outer Neon Rim -->
+  <circle cx="256" cy="256" r="232" fill="none" stroke="url(#rimGrad)" stroke-width="14" filter="url(#neonGlow)" />
+  <circle cx="256" cy="256" r="232" fill="none" stroke="#00f0ff" stroke-width="4" stroke-opacity="0.8" />
+
+  <!-- Back Orbit Section (behind monogram) -->
+  <path d="M 380 280 C 440 250 460 210 420 195 C 380 180 300 205 230 240"
+        fill="none" stroke="url(#orbitGrad)" stroke-width="10" stroke-linecap="round" stroke-opacity="0.4" filter="url(#softGlow)" />
+
+  <!-- Crown on top of R -->
+  <g filter="url(#neonGlow)">
+    <polygon points="200,152 220,118 256,92 292,118 312,152 284,146 256,158 228,146" fill="url(#cyanBlueGrad)" />
+    <!-- Crown bottom band -->
+    <polygon points="212,166 256,164 300,166 290,172 256,170 222,172" fill="#00e5ff" />
+  </g>
+
+  <!-- Letter V (Silver Metallic) -->
+  <g id="letter-v">
+    <!-- Left Wing of V -->
+    <polygon points="100,166 166,166 214,352 162,352" fill="url(#silverGrad)" />
+    <!-- Center Bevel / Highlight on V -->
+    <polygon points="135,166 166,166 214,352 196,352" fill="#ffffff" opacity="0.4" />
+    <!-- Right Wing of V passing up into R junction -->
+    <polygon points="162,352 214,352 290,214 246,214" fill="url(#silverGrad)" />
+  </g>
+
+  <!-- Letter R (Electric Cyan / Blue Gradient) -->
+  <g id="letter-r" filter="url(#neonGlow)">
+    <!-- Main Upper Loop of R -->
+    <path d="M 225 166 L 332 166 C 378 166 398 190 398 222 C 398 254 372 278 326 278 L 272 278 L 338 198 L 244 198 L 225 166 Z" fill="url(#cyanBlueGrad)" />
+    <!-- Upper loop hollow cutout -->
+    <path d="M 276 198 L 324 198 C 348 198 362 208 362 222 C 362 236 348 246 324 246 L 298 246 Z" fill="#03060d" />
+
+    <!-- R Lower Diagonal Leg -->
+    <polygon points="274,244 326,244 394,350 344,350" fill="url(#cyanBlueGrad)" />
+    <polygon points="344,350 394,350 382,350 326,344" fill="#38bdf8" opacity="0.6" />
+  </g>
+
+  <!-- Front Orbit Planetary Ring (Loops in front of V & R) -->
+  <g filter="url(#neonGlow)">
+    <path d="M 92,308 C 110,336 170,342 245,324 C 325,304 405,258 440,202"
+          fill="none" stroke="url(#orbitGrad)" stroke-width="12" stroke-linecap="round" />
+    <!-- Sharp tapered glow streak inside orbit -->
+    <path d="M 120,314 C 180,336 260,324 330,296"
+          fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0.8" />
+  </g>
+</svg>
