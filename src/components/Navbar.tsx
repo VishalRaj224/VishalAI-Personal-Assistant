@@ -1,4 +1,5 @@
 import React from "react";
+import { PWAInstallButton } from "./PWAInstallButton";
 import {
   Shield,
   ShieldAlert,
@@ -19,7 +20,7 @@ import {
 } from "lucide-react";
 import { AssistantSettings, Platform } from "../types";
 import { User } from "../lib/firebase";
-import { VrLogo } from "./VrLogo";
+import { AssistantLogo } from "./AssistantLogo";
 
 interface NavbarProps {
   settings: AssistantSettings;
@@ -61,7 +62,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Brand & Assistant Identity */}
         <div className="flex items-center gap-3">
           <div className="relative group cursor-pointer">
-            <VrLogo className="w-10 h-10 transition-transform duration-300 group-hover:scale-105" />
+            <AssistantLogo className="w-10 h-10 transition-transform duration-300 group-hover:scale-105" />
             <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-zinc-950" title="System Operational & Core Online" />
           </div>
           <div>
@@ -130,7 +131,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
             <select
               id="navbar-permission-selector"
-              value={settings.currentPermissionLevel}
+              value={settings.currentPermissionLevel || 3}
               onChange={(e) => onChangePermissionLevel(Number(e.target.value))}
               aria-label="Current Permission Level"
               className="bg-transparent font-semibold focus:outline-hidden cursor-pointer"
@@ -176,6 +177,8 @@ export const Navbar: React.FC<NavbarProps> = ({
               </>
             )}
           </button>
+          
+          <PWAInstallButton />
 
           {/* Firebase Authentication Button & Profile */}
           {currentUser ? (

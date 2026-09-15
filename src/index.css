@@ -27,3 +27,19 @@
 .animate-subtle-shake {
   animation: subtle-shake 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
 }
+
+/* Custom Webkit Scrollbar styles to replace tailwind-scrollbar plugin */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #52525b;
+}

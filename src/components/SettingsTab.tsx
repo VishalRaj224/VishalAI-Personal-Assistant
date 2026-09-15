@@ -21,7 +21,8 @@ import {
   Pencil
 } from "lucide-react";
 import { AssistantSettings } from "../types";
-import { VrLogo } from "./VrLogo";
+import { AssistantLogo } from "./AssistantLogo";
+import { LogoUploader } from "./LogoUploader";
 
 interface SettingsTabProps {
   settings: AssistantSettings;
@@ -33,13 +34,17 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   onUpdateSettings,
 }) => {
   const [formData, setFormData] = useState({
-    assistantName: settings.assistantName,
-    wakeWord: settings.wakeWord,
-    ownerName: settings.ownerName,
-    ownerEmail: settings.ownerEmail,
-    aiProvider: settings.aiProvider,
-    mfaEnabled: settings.mfaEnabled,
-    voiceAccessEnabled: settings.voiceAccessEnabled,
+    assistantName: settings.assistantName || "",
+    wakeWord: settings.wakeWord || "",
+    ownerName: settings.ownerName || "",
+    ownerEmail: settings.ownerEmail || "",
+    aiProvider: settings.aiProvider || "gemini-flash",
+    mfaEnabled: settings.mfaEnabled ?? true,
+    voiceAccessEnabled: settings.voiceAccessEnabled ?? true,
+    speakerVerificationEnabled: settings.speakerVerificationEnabled ?? false,
+    voiceResponseEnabled: settings.voiceResponseEnabled ?? true,
+    requireConfirmationForSensitive: settings.requireConfirmationForSensitive ?? true,
+    audioRetention: settings.audioRetention || "none",
   });
   const [isSaving, setIsSaving] = useState(false);
   const [savedNotice, setSavedNotice] = useState(false);
@@ -139,7 +144,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
             {/* Custom VR Monogram Badge Display */}
             <div className="flex items-center gap-3.5 p-3 rounded-xl bg-zinc-950/80 border border-zinc-800/80">
-              <VrLogo className="w-12 h-12" />
+              <AssistantLogo className="w-12 h-12" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <h3 className="text-xs font-bold text-zinc-100 truncate">
@@ -178,6 +183,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               />
             </div>
           </div>
+
+          {/* Logo Upload Component */}
+          <LogoUploader />
 
           {/* Navigation Tabs Customization & Display Mode */}
           <div className="p-6 rounded-2xl bg-zinc-900 border border-zinc-800 shadow-xl space-y-4">
@@ -418,6 +426,71 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   className="w-4 h-4 accent-sky-500"
                 />
               </label>
+
+              <label className="flex items-center justify-between p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 cursor-pointer">
+                <div>
+                  <div className="text-xs font-semibold text-zinc-200">Speaker Verification</div>
+                  <div className="text-[11px] text-zinc-400">
+                    Verify voice matches owner before executing commands
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={formData.speakerVerificationEnabled}
+                  onChange={(e) =>
+                    setFormData({ ...formData, speakerVerificationEnabled: e.target.checked })
+                  }
+                  className="w-4 h-4 accent-sky-500"
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 cursor-pointer">
+                <div>
+                  <div className="text-xs font-semibold text-zinc-200">Spoken Feedback</div>
+                  <div className="text-[11px] text-zinc-400">
+                    Assistant will speak responses aloud
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={formData.voiceResponseEnabled}
+                  onChange={(e) =>
+                    setFormData({ ...formData, voiceResponseEnabled: e.target.checked })
+                  }
+                  className="w-4 h-4 accent-sky-500"
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 cursor-pointer">
+                <div>
+                  <div className="text-xs font-semibold text-zinc-200">Sensitive Action Confirmations</div>
+                  <div className="text-[11px] text-zinc-400">
+                    Require explicit confirmation for Level 4+ actions
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={formData.requireConfirmationForSensitive}
+                  onChange={(e) =>
+                    setFormData({ ...formData, requireConfirmationForSensitive: e.target.checked })
+                  }
+                  className="w-4 h-4 accent-sky-500"
+                />
+              </label>
+
+              <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800">
+                <div className="text-xs font-semibold text-zinc-200 mb-2">Audio Privacy / Retention</div>
+                <select
+                  value={formData.audioRetention}
+                  onChange={(e) => setFormData({ ...formData, audioRetention: e.target.value as any })}
+                  className="w-full p-2 bg-zinc-900 border border-zinc-800 rounded-lg text-xs text-zinc-300 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                >
+                  <option value="none">Do not retain audio (Process locally and discard)</option>
+                  <option value="session">Keep for current session only</option>
+                  <option value="all">Keep all audio history</option>
+                </select>
+              </div>
+
             </div>
           </div>
 

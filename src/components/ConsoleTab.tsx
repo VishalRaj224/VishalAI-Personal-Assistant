@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { VoiceWaveform } from "./VoiceWaveform";
 import { AssistantSettings, Platform, ActionProposal, TabStatusType } from "../types";
-import { VrLogo } from "./VrLogo";
+import { AssistantLogo } from "./AssistantLogo";
 
 interface Message {
   id: string;
@@ -35,6 +35,7 @@ interface ConsoleTabProps {
   activePlatform: Platform;
   onExecuteCommand: (command: string, requiredLevel: number, category?: string) => Promise<any>;
   onStatusChange?: (status: TabStatusType, label?: string) => void;
+  onChangePermissionLevel?: (level: number) => Promise<void>;
 }
 
 export const ConsoleTab: React.FC<ConsoleTabProps> = ({
@@ -42,6 +43,7 @@ export const ConsoleTab: React.FC<ConsoleTabProps> = ({
   activePlatform,
   onExecuteCommand,
   onStatusChange,
+  onChangePermissionLevel,
 }) => {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -57,6 +59,8 @@ export const ConsoleTab: React.FC<ConsoleTabProps> = ({
   const [ttsEnabled, setTtsEnabled] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [speechTranscript, setSpeechTranscript] = useState("");
+  const [latencyStats, setLatencyStats] = useState<{ttfb: number, processing: number} | null>(null);
+
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
 
@@ -116,6 +120,11 @@ export const ConsoleTab: React.FC<ConsoleTabProps> = ({
 
         const heardText = (final || interim).trim();
         setSpeechTranscript(heardText);
+        
+        // Instant Interruption: if user starts speaking, stop current TTS immediately
+        if (heardText.length > 0 && window.speechSynthesis.speaking) {
+          window.speechSynthesis.cancel();
+        }
 
         // Check for wake word trigger or direct command
         if (final && final.trim().length > 0) {
@@ -206,6 +215,33 @@ export const ConsoleTab: React.FC<ConsoleTabProps> = ({
     const textToSend = userPrompt || input;
     if (!textToSend.trim() || isLoading) return;
 
+    // Hard intercept for immediate Root Admin Mode deactivation
+    const lowerText = textToSend.toLowerCase();
+    if (lowerText.includes("deactivate") && (lowerText.includes("root admin") || lowerText.includes("level 5"))) {
+      if (onChangePermissionLevel) {
+        await onChangePermissionLevel(3);
+      }
+      onStatusChange?.("error", "Level 5 Root Admin Mode immediately deactivated");
+      setInput("");
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `msg-${Date.now()}`,
+          role: "user",
+          text: textToSend,
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        },
+        {
+          id: `msg-${Date.now() + 1}`,
+          role: "assistant",
+          text: "Root Admin Mode has been successfully deactivated. Operating at standard Level 3 security.",
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        },
+      ]);
+      speakText("Root Admin Mode deactivated.");
+      return;
+    }
+
     const userMsg: Message = {
       id: `msg-${Date.now()}`,
       role: "user",
@@ -216,6 +252,9 @@ export const ConsoleTab: React.FC<ConsoleTabProps> = ({
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setIsLoading(true);
+    setLatencyStats(null); // Reset before tracking
+
+    const startTime = performance.now();
 
     try {
       const res = await fetch("/api/chat", {
@@ -228,12 +267,21 @@ export const ConsoleTab: React.FC<ConsoleTabProps> = ({
         }),
       });
 
+      const ttfbTime = performance.now();
+
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.error || `Server responded with status ${res.status}`);
       }
 
       const data = await res.json();
+      const endTime = performance.now();
+      
+      setLatencyStats({
+        ttfb: Math.round(ttfbTime - startTime),
+        processing: Math.round(endTime - ttfbTime)
+      });
+
       const assistantReply = data.reply || "Command acknowledged.";
 
       const assistantMsg: Message = {
@@ -336,7 +384,7 @@ export const ConsoleTab: React.FC<ConsoleTabProps> = ({
               <div className="flex items-center gap-2 mb-1 px-1">
                 {m.role === "user" ? (
                   <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-sky-400">
-                    <VrLogo className="w-3.5 h-3.5 shrink-0" />
+                    <AssistantLogo className="w-3.5 h-3.5 shrink-0" />
                     <span>{settings.ownerName}</span>
                   </span>
                 ) : (
@@ -505,6 +553,24 @@ export const ConsoleTab: React.FC<ConsoleTabProps> = ({
               Zero-Trust Token Verified
             </span>
           </div>
+          
+          {/* Performance Telemetry (Debug Mode) */}
+          {latencyStats && (
+            <div className="flex items-center gap-3 mt-3 px-2 py-1.5 bg-zinc-900/50 rounded-lg border border-zinc-800/50 text-[10px] text-zinc-400 font-mono">
+              <span className="flex items-center gap-1 text-emerald-400">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                TTFB: {latencyStats.ttfb}ms
+              </span>
+              <span className="text-zinc-600">|</span>
+              <span className="text-sky-400">
+                Processing: {latencyStats.processing}ms
+              </span>
+              <span className="text-zinc-600">|</span>
+              <span className="text-zinc-300 font-semibold">
+                Total Latency: {latencyStats.ttfb + latencyStats.processing}ms
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -551,7 +617,7 @@ export const ConsoleTab: React.FC<ConsoleTabProps> = ({
             <div className="space-y-3 text-xs">
               <div className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-950/50 border border-zinc-800/80">
                 <span className="text-zinc-400 flex items-center gap-1.5">
-                  <VrLogo className="w-4 h-4" />
+                  <AssistantLogo className="w-4 h-4" />
                   <span>Authorized Owner:</span>
                 </span>
                 <span className="font-semibold text-zinc-200">{settings.ownerName}</span>

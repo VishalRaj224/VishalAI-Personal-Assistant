@@ -22,7 +22,7 @@ export const VoiceLabTab: React.FC<VoiceLabTabProps> = ({
   settings,
   onUpdateSettings,
 }) => {
-  const [wakeWordInput, setWakeWordInput] = useState(settings.wakeWord);
+  const [wakeWordInput, setWakeWordInput] = useState(settings.wakeWord || "Hey Vishal AI");
   const [isCalibrating, setIsCalibrating] = useState(false);
   const [calibrationProgress, setCalibrationProgress] = useState(100);
   const [speechRate, setSpeechRate] = useState(1.0);
@@ -125,7 +125,7 @@ export const VoiceLabTab: React.FC<VoiceLabTabProps> = ({
           {/* Pre-configured Wake Words */}
           <div className="flex flex-wrap gap-2 text-xs">
             <span className="text-zinc-500 text-[11px] py-1">Quick Select:</span>
-            {["Hello Astra", "Hey Assistant", "Astra Wake Up", "Jarvis Mode"].map((phrase) => (
+            {["Hey Vishal AI", "Vishal AI", "Hello Vishal", "Computer"].map((phrase) => (
               <button
                 key={phrase}
                 onClick={() => setWakeWordInput(phrase)}

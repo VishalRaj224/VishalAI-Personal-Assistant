@@ -32,12 +32,19 @@ export interface AssistantSettings {
   currentPermissionLevel: number; // 1 to 5
   privacyMode: boolean;
   voiceAccessEnabled: boolean;
+  speakerVerificationEnabled: boolean;
+  selectedMicrophoneId?: string;
+  listeningTimeout: number; // in ms
+  voiceResponseEnabled: boolean;
+  requireConfirmationForSensitive: boolean;
+  audioRetention: "none" | "session" | "all";
   mfaEnabled: boolean;
   aiProvider: "gemini-flash" | "gemini-6.3-flash" | "gemini-pro" | "local-hybrid" | "custom";
   activePlatform: Platform;
   theme: "dark" | "light" | "cyber";
   customTabOrder?: string[];
   customTabLabels?: Record<string, string>;
+  customTabColors?: Record<string, string>;
   navTabDisplay?: "both" | "icons-only";
 }
 

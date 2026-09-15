@@ -10,19 +10,24 @@ import {
   RefreshCw,
   Terminal,
   ShieldCheck,
-  Compass
+  Compass,
+  History
 } from "lucide-react";
 import { SearchSource, TabStatusType } from "../types";
+import { db, User } from "../lib/firebase";
+import { doc, getDoc, setDoc, arrayUnion } from "firebase/firestore";
 
 interface SearchGroundingTabProps {
   onExecuteCommand?: (cmd: string) => void;
   assistantName: string;
   onStatusChange?: (status: TabStatusType, label?: string) => void;
+  currentUser?: User | null | any;
 }
 
 export const SearchGroundingTab: React.FC<SearchGroundingTabProps> = ({
   assistantName,
   onStatusChange,
+  currentUser,
 }) => {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -32,8 +37,27 @@ export const SearchGroundingTab: React.FC<SearchGroundingTabProps> = ({
   const [modelUsed, setModelUsed] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
 
   const prevBusyRef = useRef(false);
+
+  useEffect(() => {
+    if (currentUser?.uid) {
+      const loadRecents = async () => {
+        try {
+          const userRef = doc(db, "users", currentUser.uid);
+          const docSnap = await getDoc(userRef);
+          if (docSnap.exists() && docSnap.data().recentSearches) {
+            setRecentSearches(docSnap.data().recentSearches);
+          }
+        } catch (error) {
+          console.error("Failed to load recent searches:", error);
+        }
+      };
+      loadRecents();
+    }
+  }, [currentUser]);
 
   useEffect(() => {
     if (loading) {
@@ -55,9 +79,33 @@ export const SearchGroundingTab: React.FC<SearchGroundingTabProps> = ({
     "Best practices for cross-platform IPC between macOS, Windows, and Linux",
   ];
 
+  const saveSearchToFirestore = async (q: string) => {
+    if (!currentUser?.uid || !q.trim()) return;
+    try {
+      const userRef = doc(db, "users", currentUser.uid);
+      
+      setRecentSearches(prev => {
+        const updated = [q.trim(), ...prev.filter(s => s !== q.trim())].slice(0, 10);
+        
+        // Save the explicitly sliced array to keep Firestore document clean and bounded
+        setDoc(userRef, { recentSearches: updated }, { merge: true }).catch(e => {
+          console.error("Failed to sync recent searches to Firestore", e);
+        });
+        
+        return updated;
+      });
+    } catch (e) {
+      console.error("Failed to update recent searches state", e);
+    }
+  };
+
   const handleSearch = async (targetQuery?: string) => {
     const q = targetQuery || query;
     if (!q.trim() || loading) return;
+
+    if (targetQuery) {
+      setQuery(targetQuery);
+    }
 
     setLoading(true);
     setError(null);
@@ -81,6 +129,9 @@ export const SearchGroundingTab: React.FC<SearchGroundingTabProps> = ({
       setSources(data.searchSources || []);
       setSearchQueries(data.searchQueries || []);
       setModelUsed(data.modelUsed || "gemini-3.5-flash");
+      
+      // Save search on success
+      await saveSearchToFirestore(q);
     } catch (err: any) {
       setError(err.message || "Failed to retrieve grounded results.");
     } finally {
@@ -166,8 +217,30 @@ export const SearchGroundingTab: React.FC<SearchGroundingTabProps> = ({
           </button>
         </form>
 
+        {/* Recent Searches */}
+        {recentSearches.length > 0 && (
+          <div className="mt-3.5 pt-3.5 border-t border-zinc-800/80 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-sky-500/80 flex items-center gap-1 font-medium">
+              <History className="w-3.5 h-3.5 text-sky-400/80" /> Recent:
+            </span>
+            {recentSearches.map((sq, idx) => (
+              <button
+                key={`recent-${idx}`}
+                onClick={() => {
+                  setQuery(sq);
+                  handleSearch(sq);
+                }}
+                className="px-2.5 py-1 rounded-lg bg-sky-950/20 hover:bg-sky-900/40 border border-sky-500/20 text-[11px] text-zinc-300 transition"
+                title="Run this recent search again"
+              >
+                {sq}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Suggested Queries */}
-        <div className="mt-3.5 pt-3.5 border-t border-zinc-800/80 flex flex-wrap items-center gap-2">
+        <div className={`flex flex-wrap items-center gap-2 ${recentSearches.length > 0 ? "mt-2" : "mt-3.5 pt-3.5 border-t border-zinc-800/80"}`}>
           <span className="text-xs text-zinc-500 flex items-center gap-1 font-medium">
             <Compass className="w-3.5 h-3.5 text-zinc-400" /> Suggested:
           </span>

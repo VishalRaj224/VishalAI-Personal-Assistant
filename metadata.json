@@ -1,6 +1,6 @@
 {
-  "name": "Personal AI Assistant",
-  "description": "Cross-platform personal AI assistant with real-time voice conversations, Firebase auth and database, multimodal media creation (Veo video, Lyria music, image editing), audio transcription, and Google Search grounding.",
+  "name": "Vishal AI",
+  "description": "Vishal AI — A cross-platform personal AI assistant with real-time voice conversations, Firebase auth and database, multimodal media creation (Veo video, Lyria music, image editing), audio transcription, and Google Search grounding.",
   "requestFramePermissions": [
     "microphone"
   ],

@@ -10,6 +10,7 @@ import {
   Activity, 
   RefreshCw 
 } from "lucide-react";
+import { AssistantLogo } from "./AssistantLogo";
 
 interface LiveVoiceModalProps {
   isOpen: boolean;
@@ -286,23 +287,11 @@ export const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
           />
 
           {/* Core Orb */}
-          <div 
-            className={`w-32 h-32 rounded-full flex items-center justify-center shadow-2xl transition-all duration-200 ${
-              isTalking
-                ? "bg-gradient-to-tr from-sky-500 via-indigo-600 to-purple-500 shadow-sky-500/50 scale-105"
-                : isConnected
-                ? "bg-gradient-to-tr from-sky-950 via-zinc-900 to-sky-900 border border-sky-500/30 shadow-sky-900/30"
-                : "bg-zinc-900 border border-zinc-800"
-            }`}
-          >
-            {isTalking ? (
-              <Volume2 className="w-12 h-12 text-white animate-bounce" />
-            ) : isMuted ? (
-              <MicOff className="w-10 h-10 text-rose-400" />
-            ) : (
-              <Mic className="w-10 h-10 text-sky-400" />
-            )}
-          </div>
+          <AssistantLogo 
+            size={128} 
+            state={!isConnected ? "idle" : isTalking ? "speaking" : isMuted ? "idle" : "listening"} 
+          />
+
 
           {/* Sound Wave Indicator Dots */}
           <div className="absolute -bottom-4 flex items-center gap-1.5">

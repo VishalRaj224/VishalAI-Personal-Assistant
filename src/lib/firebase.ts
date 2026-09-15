@@ -5,10 +5,12 @@ import {
   signInWithPopup, 
   signOut, 
   onAuthStateChanged,
+  signInAnonymously,
   type User 
 } from "firebase/auth";
 import { 
   getFirestore, 
+  initializeFirestore,
   doc, 
   getDocFromServer,
   type Firestore 
@@ -22,8 +24,8 @@ export const googleProvider = new GoogleAuthProvider();
 
 // Initialize Firestore with specific databaseId if configured
 export const db: Firestore = (firebaseConfig as any).firestoreDatabaseId
-  ? getFirestore(app, (firebaseConfig as any).firestoreDatabaseId)
-  : getFirestore(app);
+  ? initializeFirestore(app, { experimentalForceLongPolling: true }, (firebaseConfig as any).firestoreDatabaseId)
+  : initializeFirestore(app, { experimentalForceLongPolling: true });
 
 // Test connection to Firestore on initialization as mandated by Firebase skill
 export async function testFirestoreConnection(): Promise<boolean> {

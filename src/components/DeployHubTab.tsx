@@ -23,7 +23,7 @@ import {
   Share2,
 } from "lucide-react";
 import { AssistantSettings } from "../types";
-import { VrLogo } from "./VrLogo";
+import { AssistantLogo } from "./AssistantLogo";
 
 interface DeployHubTabProps {
   settings: AssistantSettings;
@@ -205,7 +205,7 @@ exit /b
 
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5 relative z-10">
           <div className="flex items-start sm:items-center gap-4">
-            <VrLogo className="w-14 h-14 shrink-0" />
+            <AssistantLogo className="w-14 h-14 shrink-0" />
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <h1 className="text-lg font-bold text-zinc-100 flex items-center gap-2">
@@ -744,7 +744,7 @@ exit /b
             <div className="p-6 rounded-2xl bg-zinc-900 border border-amber-500/20 font-sans space-y-4 shadow-inner">
               <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
                 <div className="flex items-center gap-2">
-                  <VrLogo className="w-8 h-8" />
+                  <AssistantLogo className="w-8 h-8" />
                   <span className="font-bold text-zinc-200 text-sm">
                     Astra Intelligence Proprietary Registration
                   </span>

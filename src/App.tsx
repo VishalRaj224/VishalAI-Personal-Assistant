@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
+import { Flipper, Flipped } from "react-flip-toolkit";
+import { motion } from "motion/react";
 import {
   Radio,
   BookOpen,
@@ -21,7 +23,8 @@ import {
   Check,
   Pencil,
   AlertCircle,
-  Smartphone
+  Smartphone,
+  Search
 } from "lucide-react";
 import { Navbar } from "./components/Navbar";
 import { ConsoleTab } from "./components/ConsoleTab";
@@ -39,6 +42,9 @@ import { LiveVoiceModal } from "./components/LiveVoiceModal";
 import { GeminiChatTab } from "./components/GeminiChatTab";
 import { SearchGroundingTab } from "./components/SearchGroundingTab";
 import { MediaStudioTab } from "./components/MediaStudioTab";
+import { PublicPortal } from "./components/PublicPortal";
+import { GlobalVoiceAssistant } from "./components/GlobalVoiceAssistant";
+import { PWAInstallButton } from "./components/PWAInstallButton";
 import { AssistantSettings, Platform, Device, ActivityLog, TabStatusType, TabStatusState } from "./types";
 import { auth, db, loginWithGoogle, logoutUser, onAuthStateChanged, User, testFirestoreConnection } from "./lib/firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
@@ -69,8 +75,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabId>("console");
 
   const [settings, setSettings] = useState<AssistantSettings>({
-    assistantName: "Astra",
-    wakeWord: "Hello Astra",
+    assistantName: "Vishal AI",
+    wakeWord: "Hey Vishal AI",
     ownerName: "Vishal Raj Gond",
     ownerEmail: "vishalrajgond2005@gmail.com",
     language: "en",
@@ -78,6 +84,11 @@ export default function App() {
     currentPermissionLevel: 3,
     privacyMode: false,
     voiceAccessEnabled: true,
+    speakerVerificationEnabled: false,
+    listeningTimeout: 10000,
+    voiceResponseEnabled: true,
+    requireConfirmationForSensitive: true,
+    audioRetention: "none",
     mfaEnabled: true,
     aiProvider: "gemini-flash",
     activePlatform: "macOS",
@@ -85,6 +96,7 @@ export default function App() {
   });
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [isLiveVoiceOpen, setIsLiveVoiceOpen] = useState(false);
   const [activePlatform, setActivePlatform] = useState<Platform>("macOS");
   const [devices, setDevices] = useState<Device[]>([]);
@@ -103,9 +115,15 @@ export default function App() {
   } | null>(null);
   const tooltipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Sliding underline state
+  const navRef = useRef<HTMLElement>(null);
+  const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0, opacity: 0 });
+  const [tabSearchQuery, setTabSearchQuery] = useState("");
+
   // Inline tab editing state (double-click on tab buttons to rename)
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [editingTabLabel, setEditingTabLabel] = useState<string>("");
+  const [editingTabColor, setEditingTabColor] = useState<string>("#38bdf8");
   const [shakingTabId, setShakingTabId] = useState<string | null>(null);
   const [renameError, setRenameError] = useState<{
     tabId: string;
@@ -218,6 +236,7 @@ export default function App() {
           console.warn("Firestore user sync notice:", err);
         }
       }
+      setAuthLoading(false);
     });
 
     return () => unsubscribe();
@@ -248,12 +267,43 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
+      if (settings.currentPermissionLevel === 5) {
+        await handleUpdateSettings({ currentPermissionLevel: 3 });
+      }
       await logoutUser();
       setCurrentUser(null);
     } catch (e) {
       console.error("Logout failed:", e);
     }
   };
+
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+
+    const resetTimer = () => {
+      if (settings.currentPermissionLevel === 5) {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => {
+          handleChangePermissionLevel(3);
+          handleTabStatusChange("console", "error", "Level 5 Root Admin Mode deactivated due to inactivity");
+        }, 5 * 60 * 1000); // 5 minutes inactivity timeout
+      }
+    };
+
+    if (settings.currentPermissionLevel === 5) {
+      resetTimer();
+      window.addEventListener("mousemove", resetTimer);
+      window.addEventListener("keydown", resetTimer);
+      window.addEventListener("touchstart", resetTimer);
+    }
+
+    return () => {
+      clearTimeout(timeoutId);
+      window.removeEventListener("mousemove", resetTimer);
+      window.removeEventListener("keydown", resetTimer);
+      window.removeEventListener("touchstart", resetTimer);
+    };
+  }, [settings.currentPermissionLevel]);
 
   const fetchSettings = async () => {
     // Check cached settings from localStorage for instant initial load
@@ -376,6 +426,10 @@ export default function App() {
   };
 
   const handleChangePermissionLevel = async (level: number) => {
+    if (level === 5 && !isRootAdmin) {
+      alert("Access Denied: Root Admin Mode (Level 5) can only be activated by the authorized owner.");
+      return;
+    }
     await handleUpdateSettings({ currentPermissionLevel: level });
   };
 
@@ -501,12 +555,14 @@ export default function App() {
   ];
 
   // Derive ordered tabs based on user's saved preferences
-  const currentTabOrder: string[] = settings.customTabOrder && settings.customTabOrder.length > 0
-    ? settings.customTabOrder
-    : defaultNavTabs.map((t) => t.id);
+  const currentTabOrder: string[] = useMemo(() => {
+    return settings.customTabOrder && settings.customTabOrder.length > 0
+      ? settings.customTabOrder
+      : defaultNavTabs.map((t) => t.id);
+  }, [settings.customTabOrder]);
 
   // Keep all tabs, ensuring newly added tabs still appear at the end if omitted in saved order
-  const orderedNavTabs: NavTabItem[] = [
+  const orderedNavTabs: NavTabItem[] = useMemo(() => [
     ...currentTabOrder
       .map((id) => {
         const found = defaultNavTabs.find((t) => t.id === id);
@@ -521,7 +577,13 @@ export default function App() {
         const custom = settings.customTabLabels?.[t.id];
         return custom ? { ...t, label: custom } : t;
       }),
-  ];
+  ], [currentTabOrder, settings.customTabLabels]);
+
+  const filteredNavTabs = useMemo(() => {
+    if (!tabSearchQuery.trim()) return orderedNavTabs;
+    const query = tabSearchQuery.toLowerCase();
+    return orderedNavTabs.filter((tab) => tab.label.toLowerCase().includes(query));
+  }, [orderedNavTabs, tabSearchQuery]);
 
   // Tab renaming handlers (Double-click tab button to edit label)
   const triggerTabShake = (tabId: string, message: string) => {
@@ -554,7 +616,7 @@ export default function App() {
     }, 3500);
   };
 
-  const startTabRename = (tabId: string, currentLabel: string) => {
+  const startTabRename = (tabId: string, currentLabel: string, currentColor?: string) => {
     if (tooltipTimeoutRef.current) {
       clearTimeout(tooltipTimeoutRef.current);
       tooltipTimeoutRef.current = null;
@@ -564,6 +626,7 @@ export default function App() {
     setShakingTabId(null);
     setEditingTabId(tabId);
     setEditingTabLabel(currentLabel);
+    setEditingTabColor(currentColor || "#38bdf8");
     setTimeout(() => {
       if (renameInputRef.current) {
         renameInputRef.current.focus();
@@ -575,11 +638,12 @@ export default function App() {
   const cancelTabRename = () => {
     setEditingTabId(null);
     setEditingTabLabel("");
+    setEditingTabColor("#38bdf8");
     setRenameError(null);
     setShakingTabId(null);
   };
 
-  const saveTabRename = async (tabId: string, newLabel: string) => {
+  const saveTabRename = async (tabId: string, newLabel: string, newColor: string) => {
     if (editingTabId !== tabId) return;
 
     const trimmed = newLabel.trim();
@@ -612,8 +676,9 @@ export default function App() {
     const defaultLabel = defaultItem?.label || tabId;
 
     const currentLabels = { ...(settings.customTabLabels || {}) };
+    const currentColors = { ...(settings.customTabColors || {}) };
+    
     let updatedLabels: Record<string, string>;
-
     if (trimmed === defaultLabel) {
       const { [tabId]: _, ...rest } = currentLabels;
       updatedLabels = rest;
@@ -624,8 +689,19 @@ export default function App() {
       };
     }
 
+    let updatedColors: Record<string, string>;
+    if (newColor === "#38bdf8") { // default
+      const { [tabId]: _, ...rest } = currentColors;
+      updatedColors = rest;
+    } else {
+      updatedColors = {
+        ...currentColors,
+        [tabId]: newColor,
+      };
+    }
+
     // 1. Immediate optimistic UI & Express backend sync
-    await handleUpdateSettings({ customTabLabels: updatedLabels });
+    await handleUpdateSettings({ customTabLabels: updatedLabels, customTabColors: updatedColors });
 
     const finalLabel = trimmed || defaultLabel;
 
@@ -636,6 +712,7 @@ export default function App() {
         tabLabelsDocRef,
         {
           labels: updatedLabels,
+          colors: updatedColors,
           updatedAt: new Date().toISOString(),
           lastRenamedTab: tabId,
           renamedTo: finalLabel,
@@ -665,6 +742,7 @@ export default function App() {
           userSettingsDocRef,
           {
             customTabLabels: updatedLabels,
+            customTabColors: updatedColors,
             updatedAt: new Date().toISOString(),
           },
           { merge: true }
@@ -786,8 +864,47 @@ export default function App() {
     await handleUpdateSettings({ customTabOrder: defaultOrder });
   };
 
+  const updateIndicator = useCallback(() => {
+    if (!navRef.current) return;
+    const activeEl = navRef.current.querySelector(`#tab-container-${activeTab}`) as HTMLElement;
+    if (activeEl) {
+      setIndicatorStyle({
+        left: activeEl.offsetLeft,
+        width: activeEl.offsetWidth,
+        opacity: 1,
+      });
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    updateIndicator();
+    window.addEventListener("resize", updateIndicator);
+    const timeout = setTimeout(updateIndicator, 50);
+    return () => {
+      window.removeEventListener("resize", updateIndicator);
+      clearTimeout(timeout);
+    };
+  }, [updateIndicator, settings.navTabDisplay, orderedNavTabs]);
+
+  const isRootAdmin = currentUser?.email === "vishalrajgond2005@gmail.com";
+  
+  if (authLoading) {
+    return <div className="min-h-screen bg-zinc-950 flex items-center justify-center"></div>;
+  }
+  
+  if (!isRootAdmin) {
+    return <PublicPortal onAdminLogin={handleLogin} />;
+  }
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans selection:bg-sky-500/30 selection:text-sky-200">
+      
+      <GlobalVoiceAssistant 
+        settings={settings}
+        onUpdateSettings={handleUpdateSettings}
+        onExecuteCommand={handleExecuteCommand}
+      />
+
       {/* Top Main Navbar */}
       <Navbar
         settings={settings}
@@ -809,12 +926,34 @@ export default function App() {
             const isCompactNav = settings.navTabDisplay === "icons-only";
             return (
               <>
+                <Flipper flipKey={filteredNavTabs.map(t => t.id).join('')}>
                 <nav
                   id="main-tab-navigation"
+                  ref={navRef}
                   aria-label="Main Navigation"
-                  className="flex-1 flex items-center gap-1.5 p-1.5 rounded-2xl bg-zinc-900/90 border border-zinc-800/90 overflow-x-auto scrollbar-none shadow-md backdrop-blur-md"
+                  className="relative flex-1 flex items-center gap-1.5 p-1.5 rounded-2xl bg-zinc-900/90 border border-zinc-800/90 overflow-x-auto scrollbar-none shadow-md backdrop-blur-md"
                 >
-                  {orderedNavTabs.map((tab) => {
+                  <div className="sticky left-0 z-20 flex items-center bg-zinc-900/90 pr-2 py-0.5 backdrop-blur-md">
+                    <Search className="w-4 h-4 text-zinc-500 ml-2 absolute pointer-events-none" />
+                    <input
+                      type="text"
+                      placeholder="Search tabs..."
+                      value={tabSearchQuery}
+                      onChange={(e) => setTabSearchQuery(e.target.value)}
+                      className="pl-8 pr-3 py-1.5 bg-zinc-950/50 border border-zinc-800/80 rounded-xl text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-sky-500/50 focus:border-sky-500/50 w-32 md:w-48 transition-all placeholder:text-zinc-600"
+                    />
+                  </div>
+                  <div
+                    className="absolute bottom-1 h-0.5 rounded-full transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] z-10 pointer-events-none"
+                    style={{
+                      left: `${indicatorStyle.left}px`,
+                      width: `${indicatorStyle.width}px`,
+                      opacity: indicatorStyle.opacity,
+                      backgroundColor: settings.customTabColors?.[activeTab] || "#38bdf8",
+                      boxShadow: `0 0 10px ${settings.customTabColors?.[activeTab] || "#38bdf8"}80`
+                    }}
+                  />
+                  {filteredNavTabs.map((tab) => {
                     const isActive = activeTab === tab.id;
                     const isBeingDragged = draggedTabId === tab.id;
                     const isDropTarget = dragOverTabId === tab.id && draggedTabId !== tab.id;
@@ -823,11 +962,11 @@ export default function App() {
                     const hasRenameError = renameError?.tabId === tab.id;
 
                     return (
+                      <Flipped key={tab.id} flipId={tab.id}>
                       <div
-                        key={tab.id}
                         id={`tab-container-${tab.id}`}
                         draggable={editingTabId !== tab.id}
-                        onDragStart={(e) => {
+                        onDragStart={(e: any) => {
                           if (editingTabId) {
                             e.preventDefault();
                             return;
@@ -867,7 +1006,7 @@ export default function App() {
                             e.preventDefault();
                             e.stopPropagation();
                             handleTabMouseLeave();
-                            startTabRename(tab.id, tab.label);
+                            startTabRename(tab.id, tab.label, settings.customTabColors?.[tab.id]);
                           }}
                           aria-label={`${tab.label}. Double-click to rename.`}
                           title={
@@ -875,7 +1014,7 @@ export default function App() {
                               ? undefined
                               : "Double-click to rename tab label (saved to Firestore), drag to reorder"
                           }
-                          className={`flex items-center justify-center gap-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all duration-150 ${
+                          className={`focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 flex items-center justify-center gap-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all duration-150 hover:scale-105 ${
                             isCompactNav && editingTabId !== tab.id ? "px-3 py-2" : "px-3 py-2"
                           } ${
                             isShaking
@@ -883,9 +1022,14 @@ export default function App() {
                               : hasRenameError
                               ? "ring-2 ring-rose-500/60 bg-rose-950/20 text-rose-300 border border-rose-500/40"
                               : isActive
-                              ? "bg-sky-500 text-zinc-950 shadow-md shadow-sky-500/20 font-bold"
+                              ? "text-zinc-950 shadow-md shadow-black/20 font-bold"
                               : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60"
                           }`}
+                          style={
+                            isActive && !isShaking && !hasRenameError
+                              ? { backgroundColor: settings.customTabColors?.[tab.id] || "#38bdf8" }
+                              : undefined
+                          }
                         >
                           {!isCompactNav && editingTabId !== tab.id && (
                             <GripVertical
@@ -909,9 +1053,7 @@ export default function App() {
                               return (
                                 <span
                                   id={`tab-status-dot-${tab.id}`}
-                                  className={`absolute -bottom-1 -right-1 w-2.5 h-2.5 rounded-full border-2 transition-all duration-300 pointer-events-none flex items-center justify-center ${
-                                    isActive ? "border-sky-500" : "border-zinc-950"
-                                  } ${
+                                  className={`absolute -bottom-1 -right-1 w-2.5 h-2.5 rounded-full border-2 transition-all duration-300 pointer-events-none flex items-center justify-center border-zinc-950 ${
                                     isOnline
                                       ? "bg-emerald-400 shadow-xs shadow-emerald-400"
                                       : isBusy
@@ -937,6 +1079,14 @@ export default function App() {
                               onDoubleClick={(e) => e.stopPropagation()}
                             >
                               <input
+                                id={`tab-color-picker-${tab.id}`}
+                                type="color"
+                                value={editingTabColor}
+                                onChange={(e) => setEditingTabColor(e.target.value)}
+                                className="w-5 h-6 rounded-md border-0 bg-transparent shrink-0 cursor-pointer overflow-hidden p-0 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:border-none [&::-webkit-color-swatch]:rounded-md"
+                                title="Set custom theme color"
+                              />
+                              <input
                                 id={`tab-rename-input-${tab.id}`}
                                 ref={renameInputRef}
                                 type="text"
@@ -951,14 +1101,14 @@ export default function App() {
                                   if (e.key === "Enter") {
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    saveTabRename(tab.id, editingTabLabel);
+                                    saveTabRename(tab.id, editingTabLabel, editingTabColor);
                                   } else if (e.key === "Escape") {
                                     e.preventDefault();
                                     e.stopPropagation();
                                     cancelTabRename();
                                   }
                                 }}
-                                onBlur={() => saveTabRename(tab.id, editingTabLabel)}
+                                onBlur={() => saveTabRename(tab.id, editingTabLabel, editingTabColor)}
                                 maxLength={32}
                                 className={`px-2 py-0.5 rounded-lg border font-semibold text-xs tracking-tight outline-none shadow-sm min-w-[95px] max-w-[170px] ${
                                   hasRenameError || isShaking
@@ -976,7 +1126,7 @@ export default function App() {
                                 onMouseDown={(e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
-                                  saveTabRename(tab.id, editingTabLabel);
+                                  saveTabRename(tab.id, editingTabLabel, editingTabColor);
                                 }}
                                 title="Save rename to Firestore (Enter)"
                                 className={`p-1 rounded-md transition shrink-0 ${
@@ -1021,9 +1171,11 @@ export default function App() {
                           </div>
                         )}
                       </div>
+                      </Flipped>
                     );
                   })}
                 </nav>
+                </Flipper>
 
                 {/* Compact Mode Toggle Button */}
                 <button
@@ -1083,6 +1235,7 @@ export default function App() {
               activePlatform={activePlatform}
               onExecuteCommand={handleExecuteCommand}
               onStatusChange={onConsoleStatusChange}
+              onChangePermissionLevel={handleChangePermissionLevel}
             />
           )}
 
@@ -1098,6 +1251,7 @@ export default function App() {
               assistantName={settings.assistantName}
               onExecuteCommand={(cmd) => handleExecuteCommand(cmd, 1)}
               onStatusChange={onGroundingStatusChange}
+              currentUser={currentUser}
             />
           )}
 

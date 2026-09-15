@@ -5,10 +5,24 @@ import { WebSocketServer, WebSocket } from "ws";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Modality, GenerateVideosOperation } from "@google/genai";
 import dotenv from "dotenv";
+import sharp from "sharp";
+import fsPromises from "fs/promises";
 
 dotenv.config();
 
 const PORT = 3000;
+
+
+const requestCounts = new Map();
+setInterval(() => requestCounts.clear(), 60 * 1000); // Clear every minute
+
+function checkRateLimit(ip) {
+  const count = requestCounts.get(ip) || 0;
+  if (count >= 15) return false; // Max 15 messages per minute per IP
+  requestCounts.set(ip, count + 1);
+  return true;
+}
+
 
 // Lazy initialization of GoogleGenAI SDK
 let aiClient: GoogleGenAI | null = null;
@@ -29,9 +43,9 @@ function getAi(): GoogleGenAI | null {
 // Resilient Model Selection & Fallback Queue
 // When a model experiences temporary high-demand spikes (503 UNAVAILABLE), we cycle through candidate models
 const CANDIDATE_MODELS = [
-  "gemini-3.8-flash",
-  "gemini-flash-latest",
   "gemini-3.1-flash-lite",
+  "gemini-3.1-pro-preview",
+  "gemini-3.8-flash",
 ];
 
 function isTransientOrDemandError(err: any): boolean {
@@ -114,10 +128,11 @@ function processLocalFallbackChat(
   message: string,
   currentPlatform: string,
   ownerName: string
-): { reply: string; actionProposal: any } {
+): { reply: string; actionProposal: any; isFastPath: boolean } {
   const lower = message.toLowerCase();
   let reply = "";
   let actionProposal: any = null;
+  let isFastPath = false;
 
   if (lower.includes("level 5") || lower.includes("level five") || lower.includes("access level 5") || lower.includes("generate level 5") || lower.includes("root authority") || lower.includes("admin mode") || lower.includes("rotate key") || lower.includes("passkey")) {
     reply = `Level 5 Root Administrator Access granted for ${ownerName}. Generating root administrative operation for ${currentPlatform}. Level 5 permits cryptographic key rotation, fleet device pairing, and master zero-trust security configuration.`;
@@ -131,43 +146,58 @@ function processLocalFallbackChat(
   } else if (lower.includes("study mode")) {
     reply = `Switching to Study Mode on ${currentPlatform}. Initializing workspace: opening Notion notes, launching academic browser bookmarks, and muting non-essential notifications.`;
     actionProposal = { type: "workflow", command: "Activate Study Mode", requiredLevel: 2, needsConfirmation: false, target: "Study Suite" };
+    isFastPath = true;
   } else if (lower.includes("programming mode") || lower.includes("coding mode") || lower.includes("dev mode")) {
     reply = `Programming Mode engaged on ${currentPlatform}. Launching Visual Studio Code workspace, starting secure terminal shell, and checking local Git repositories.`;
     actionProposal = { type: "workflow", command: "Activate Programming Mode", requiredLevel: 2, needsConfirmation: false, target: "Dev Suite" };
+    isFastPath = true;
   } else if (lower.includes("open") || lower.includes("launch")) {
-    const appName = message.replace(/open|launch|please/gi, "").trim() || "Application";
+    const appName = message.replace(/hey vishal ai|vishal ai|open|launch|please/gi, "").trim() || "Application";
     reply = `Dispatched authorization request to launch ${appName} on your ${currentPlatform} workstation.`;
     actionProposal = { type: "launch_app", command: `Open ${appName}`, requiredLevel: 2, needsConfirmation: false, target: appName };
+    isFastPath = true;
+  } else if (lower.includes("play music") || lower.includes("turn on music") || lower.includes("play song")) {
+    reply = `Starting music playback on ${currentPlatform}.`;
+    actionProposal = { type: "launch_app", command: `Play Music`, requiredLevel: 1, needsConfirmation: false, target: "Media Player" };
+    isFastPath = true;
+  } else if (lower.includes("time is it") || lower.includes("what time") || lower.includes("current time")) {
+    reply = `The current local time is ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`;
+    isFastPath = true;
   } else if (lower.includes("delete") || lower.includes("remove") || lower.includes("format") || lower.includes("rm ")) {
     reply = `Security Alert: Destructive action detected. In accordance with Permission Level 4, this requires your explicit confirmation before execution on ${currentPlatform}.`;
     actionProposal = { type: "file_op", command: message, requiredLevel: 4, needsConfirmation: true, target: "File System" };
+    isFastPath = true;
   } else if (lower.includes("terminal") || lower.includes("bash") || lower.includes("shell") || lower.includes("powershell")) {
     reply = `Opening elevated command terminal session on ${currentPlatform}.`;
     actionProposal = { type: "system", command: `Open Terminal Shell`, requiredLevel: 3, needsConfirmation: false, target: "Terminal" };
+    isFastPath = true;
   } else if (lower.includes("browser") || lower.includes("chrome") || lower.includes("safari") || lower.includes("firefox")) {
     reply = `Launching web browser instance on ${currentPlatform}.`;
     actionProposal = { type: "launch_app", command: `Open Browser`, requiredLevel: 2, needsConfirmation: false, target: "Browser" };
+    isFastPath = true;
   } else if (lower.includes("status") || lower.includes("health") || lower.includes("device") || lower.includes("system")) {
     reply = `All systems nominal on ${currentPlatform}. Background daemons active, security permissions configured, and zero-trust device bridges connected.`;
     actionProposal = { type: "system", command: `Check System Health`, requiredLevel: 1, needsConfirmation: false, target: currentPlatform };
+    isFastPath = true;
   } else if (lower.includes("apk") || lower.includes("play store") || lower.includes("publish") || lower.includes("windows") || lower.includes("direct open") || lower.includes("deploy")) {
-    reply = `Generating cross-platform packaging assets for ${ownerName}. I have configured your 4096-bit RSA Android Play Store release keystore, generated AndroidManifest.xml (com.vishalrajgond.astra.ai), standalone Windows batch launcher, and direct-open web URL. Navigate to the "Deploy & APK Hub" tab to copy commands or download your packages.`;
+    reply = `Generating cross-platform packaging assets for ${ownerName}. I have configured your 4096-bit RSA Android Play Store release keystore, generated AndroidManifest.xml (com.vishalrajgond.vishalai.ai), standalone Windows batch launcher, and direct-open web URL. Navigate to the "Deploy & APK Hub" tab to copy commands or download your packages.`;
     actionProposal = { type: "system", command: "Generate Android APK & Play Store Release Package", requiredLevel: 5, needsConfirmation: true, target: "Packaging & Deployment Hub" };
   } else if (lower.includes("legal") || lower.includes("copyright") || lower.includes("permission") || lower.includes("license") || lower.includes("authority")) {
-    reply = `Legal Certification Confirmed: You, ${ownerName}, hold 100% exclusive proprietary ownership and copyright over Astra Personal AI. No third party or platform holds any copyright claim or intellectual property title over your personal system. Your signed Intellectual Property Certificate (REF: ASTRA-LEGAL-VRG-2026-ROOT-001) is active and available in the Deploy & APK Hub.`;
+    reply = `Legal Certification Confirmed: You, ${ownerName}, hold 100% exclusive proprietary ownership and copyright over Vishal AI Personal AI. No third party or platform holds any copyright claim or intellectual property title over your personal system. Your signed Intellectual Property Certificate (REF: VISHALAI-LEGAL-VRG-2026-ROOT-001) is active and available in the Deploy & APK Hub.`;
     actionProposal = { type: "system", command: "Verify Intellectual Property & Legal Ownership Certificate", requiredLevel: 1, needsConfirmation: false, target: "Legal Vault" };
   } else if (lower.includes("guardrail") || lower.includes("safety") || lower.includes("6.3 flash") || lower.includes("gimini")) {
     reply = `Gemini 6.3 Flash AI Intelligence Safety Guardrails are ACTIVE for ${ownerName}. Multi-tier zero-trust filters are enforced: Harassment (Blocked), Hate Speech (Blocked), Dangerous Content (Blocked), and Unauthorized Privilege Escalation (Blocked). Your personal data and hardware telemetry remain strictly encrypted within your local boundary.`;
     actionProposal = { type: "system", command: "Run Gemini 6.3 Flash Safety Guardrail Audit", requiredLevel: 1, needsConfirmation: false, target: "Safety Guardrail Engine" };
   } else if (lower.includes("namaste") || lower.includes("kaise ho") || lower.includes("kya haal hai")) {
     reply = `Namaste ${ownerName}! Main badhiya hoon. Aapke ${currentPlatform} par sabhi automation services active hain. Aaj main aapki kya madad kar sakta hoon?`;
+    isFastPath = true;
   } else if (lower.includes("hello") || lower.includes("hi") || lower.includes("hey")) {
     reply = `Greetings ${ownerName}. I am active and monitoring your ${currentPlatform} workstation. How can I assist your tasks today?`;
+    isFastPath = true;
   } else {
     reply = `I have received your command: "${message}". The upstream AI model is experiencing a temporary high-demand spike, so I've executed this through our local automation engine on ${currentPlatform}. All system actions, workflows, and device controls are fully operational.`;
   }
-
-  return { reply, actionProposal };
+  return { reply, actionProposal, isFastPath };
 }
 
 function generateLocalDocAnalysis(fileName: string, content: string, prompt: string): string {
@@ -239,8 +269,8 @@ interface AssistantSettings {
 }
 
 let settings: AssistantSettings = {
-  assistantName: "Astra",
-  wakeWord: "Hello Astra",
+  assistantName: "Vishal AI",
+  wakeWord: "Hello Vishal AI",
   ownerName: "Vishal Raj Gond",
   ownerEmail: "vishalrajgond2005@gmail.com",
   language: "en",
@@ -312,7 +342,7 @@ let logs: ActivityLog[] = [
   {
     id: "log-1",
     timestamp: new Date(Date.now() - 1000 * 60 * 35).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-    command: "Wake word detected: 'Hello Astra'",
+    command: "Wake word detected: 'Hello Vishal AI'",
     category: "voice",
     status: "success",
     permissionLevel: 1,
@@ -342,6 +372,7 @@ let logs: ActivityLog[] = [
 ];
 
 async function startServer() {
+
   const app = express();
 
   // CORS middleware allowing cross-origin requests from AI Studio preview and cloud domains
@@ -356,6 +387,42 @@ async function startServer() {
   });
 
   app.use(express.json({ limit: "25mb" }));
+
+// Logo Upload & Resize Endpoint
+  app.post("/api/upload-logo", async (req, res) => {
+    try {
+      const { imageBase64 } = req.body;
+      if (!imageBase64) return res.status(400).json({ error: "Missing image" });
+      
+      const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+      const buffer = Buffer.from(base64Data, 'base64');
+      
+      const publicDir = path.join(process.cwd(), "public");
+      const iconDir = path.join(publicDir, "assets", "icons");
+      
+      // Ensure directories exist
+      await fsPromises.mkdir(iconDir, { recursive: true });
+      
+      // Save primary logo
+      await fsPromises.writeFile(path.join(iconDir, "logo.png"), buffer);
+      
+      // Generate PWA icons using sharp
+      const img = sharp(buffer);
+      await img.resize(64, 64).toFile(path.join(publicDir, "pwa-64x64.png"));
+      await img.resize(192, 192).toFile(path.join(publicDir, "pwa-192x192.png"));
+      await img.resize(512, 512).toFile(path.join(publicDir, "pwa-512x512.png"));
+      await img.resize(512, 512).toFile(path.join(publicDir, "maskable-icon-512x512.png"));
+      await img.resize(180, 180).toFile(path.join(publicDir, "apple-touch-icon-180x180.png"));
+      await img.resize(64, 64).toFile(path.join(publicDir, "favicon.png")); // Fallback favicon as png
+      
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Logo upload failed:", err);
+      res.status(500).json({ error: "Upload failed" });
+    }
+  });
+
+  
 
   // API Routes
   app.get("/api/health", (_req, res) => {
@@ -391,10 +458,10 @@ async function startServer() {
   // Legal Ownership & Intellectual Property Certificate Endpoint
   app.get("/api/legal/certificate", (_req, res) => {
     res.json({
-      certificateId: "ASTRA-LEGAL-VRG-2026-ROOT-001",
+      certificateId: "VISHALAI-LEGAL-VRG-2026-ROOT-001",
       ownerName: settings.ownerName,
       ownerEmail: settings.ownerEmail,
-      applicationName: "Astra Personal AI Assistant",
+      applicationName: "Vishal AI Personal AI Assistant",
       currentVersion: "1.0.0-Release",
       issueDate: "2026-09-15",
       licensingAuthority: "Exclusive Proprietary License for Personal Use",
@@ -415,18 +482,18 @@ async function startServer() {
 
     res.json({
       android: {
-        packageName: "com.vishalrajgond.astra.ai",
-        appName: "Astra AI",
+        packageName: "com.vishalrajgond.vishalai.ai",
+        appName: "Vishal AI AI",
         versionCode: 1,
         versionName: "1.0.0",
-        keystoreCommand: `keytool -genkey -v -keystore astra-personal-ai-release.keystore -alias astra-owner-key -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=${settings.ownerName}, OU=Personal AI, O=Astra Intelligence, L=Mumbai, ST=Maharashtra, C=IN"`,
+        keystoreCommand: `keytool -genkey -v -keystore vishalai-personal-ai-release.keystore -alias vishalai-owner-key -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=${settings.ownerName}, OU=Personal AI, O=Vishal AI Intelligence, L=Mumbai, ST=Maharashtra, C=IN"`,
         bubblewrapInit: `npx @bubblewrap/cli init --manifest=${fullUrl}/manifest.webmanifest`,
-        bubblewrapBuild: `npx @bubblewrap/cli build --signingKeyPath=./astra-personal-ai-release.keystore --signingKeyAlias=astra-owner-key`,
+        bubblewrapBuild: `npx @bubblewrap/cli build --signingKeyPath=./vishalai-personal-ai-release.keystore --signingKeyAlias=vishalai-owner-key`,
       },
       windows: {
-        appName: "Astra Desktop",
+        appName: "Vishal AI Desktop",
         directWebUrl: fullUrl,
-        msixPackage: "VishalRajGond.AstraAI",
+        msixPackage: "VishalRajGond.Vishal AIAI",
       },
       web: {
         directUrl: fullUrl,
@@ -551,7 +618,7 @@ async function startServer() {
     } else if (cmdLower.includes("programming mode")) {
       executionResult = `[Programming Mode Activated] Opened VS Code, Docker Desktop, Terminal session, and local documentation server on ${targetPlatform}.`;
     } else if (cmdLower.includes("delete") || cmdLower.includes("rm ")) {
-      executionResult = `[Confirmed Deletion] Securely removed specified target. Backup created in ~/.astra/trash.`;
+      executionResult = `[Confirmed Deletion] Securely removed specified target. Backup created in ~/.vishalai/trash.`;
     } else {
       executionResult = `Executed action: "${command}" through ${targetPlatform} integration bridge.`;
     }
@@ -583,12 +650,42 @@ async function startServer() {
         return res.status(400).json({ error: "Message is required" });
       }
 
+      // Hard intercept for immediate Root Admin Mode activation request
+      const lowerMsg = message.toLowerCase();
+      if (lowerMsg.includes("activate") && (lowerMsg.includes("root admin") || lowerMsg.includes("level 5"))) {
+        return res.json({
+          reply: `Level 5 Root Administrator Access requested for ${settings.ownerName}. Awaiting explicit owner authorization.`,
+          actionProposal: {
+            type: "system",
+            command: "Elevate to Level 5 Administrator",
+            requiredLevel: 5,
+            needsConfirmation: true,
+            target: "Root Security Enclave"
+          },
+          assistantName: settings.assistantName,
+          demandSpike: false,
+          modelUsed: "system-security-override"
+        });
+      }
+
       // Check Privacy Mode
       if (settings.privacyMode) {
         return res.json({
           reply: `[Privacy Mode Active] Voice & cloud analytics are temporarily paused. To interact with full AI capabilities, please disable Privacy Mode in the top control bar.`,
           actionProposal: null,
           demandSpike: false,
+        });
+      }
+
+      // FAST PATH: Level 1 Instant Processing (No Cloud AI Required)
+      const fastPath = processLocalFallbackChat(message, currentPlatform, settings.ownerName);
+      if (fastPath.isFastPath) {
+        return res.json({
+          reply: fastPath.reply,
+          actionProposal: fastPath.actionProposal,
+          assistantName: settings.assistantName,
+          demandSpike: false,
+          modelUsed: "local-fast-path"
         });
       }
 
@@ -661,7 +758,7 @@ ACTION>>>`;
           if (isTransientOrDemandError(genErr)) {
             demandSpike = true;
             const fallback = processLocalFallbackChat(message, currentPlatform, settings.ownerName);
-            replyText = `⚠️ *[Notice: Upstream AI model is currently experiencing high demand. Responding via Astra's local resilient engine]*\n\n${fallback.reply}`;
+            replyText = `⚠️ *[Notice: Upstream AI model is currently experiencing high demand. Responding via Vishal AI's local resilient engine]*\n\n${fallback.reply}`;
             actionProposal = fallback.actionProposal;
           } else {
             throw genErr;
@@ -741,7 +838,7 @@ ACTION>>>`;
           if (isTransientOrDemandError(genErr)) {
             const fallback = generateLocalDocAnalysis(fileName, content, prompt);
             return res.json({
-              analysis: `> ⚠️ **Notice**: Upstream AI model is currently experiencing high demand. This analysis was generated by Astra's local heuristic engine.\n\n${fallback}`,
+              analysis: `> ⚠️ **Notice**: Upstream AI model is currently experiencing high demand. This analysis was generated by Vishal AI's local heuristic engine.\n\n${fallback}`,
               demandSpike: true,
               modelUsed: "local-heuristic",
             });
@@ -761,12 +858,85 @@ ACTION>>>`;
       if (isTransientOrDemandError(err)) {
         const fallback = generateLocalDocAnalysis(req.body?.fileName || "document", req.body?.content || "", req.body?.prompt || "");
         return res.json({
-          analysis: `> ⚠️ **Notice**: Upstream AI model is currently experiencing high demand. This analysis was generated by Astra's local heuristic engine.\n\n${fallback}`,
+          analysis: `> ⚠️ **Notice**: Upstream AI model is currently experiencing high demand. This analysis was generated by Vishal AI's local heuristic engine.\n\n${fallback}`,
           demandSpike: true,
           modelUsed: "local-heuristic",
         });
       }
       res.status(500).json({ error: err.message || "Failed to analyze document" });
+    }
+  });
+
+
+  // ---------------------------------------------------------
+  // 2.5 Multi-Turn Gemini Chatbot (Streaming)
+  // ---------------------------------------------------------
+  app.post("/api/gemini-chat-stream", async (req, res) => {
+    try {
+      const { message, history = [], model = "gemini-3.5-flash", systemInstruction } = req.body;
+      if (!message || !message.trim()) {
+        return res.status(400).json({ error: "Message is required" });
+      }
+      
+      const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+      if (!checkRateLimit(clientIp)) {
+        return res.status(429).json({ error: "Too many requests. Please wait a moment." });
+      }
+
+      const allowedModels = ["gemini-3.1-pro-preview", "gemini-3.5-flash", "gemini-3.1-flash-lite"];
+      const targetModel = allowedModels.includes(model) ? model : "gemini-3.5-flash";
+
+      const defaultInstruction = "You are Vishal AI, a powerful and helpful AI assistant. You provide clean, markdown-formatted responses with syntax highlighting for code blocks.";
+      const finalInstruction = systemInstruction || defaultInstruction;
+
+      const ai = getAi();
+      if (!ai) {
+        return res.status(503).json({ error: "AI Client not initialized" });
+      }
+
+      const contents = [];
+      for (const item of history.slice(-20)) {
+        contents.push({
+          role: item.role === "assistant" || item.role === "model" ? "model" : "user",
+          parts: [{ text: item.text }],
+        });
+      }
+      contents.push({
+        role: "user",
+        parts: [{ text: message }],
+      });
+
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders();
+
+      try {
+        const responseStream = await ai.models.generateContentStream({
+          model: targetModel,
+          contents,
+          config: {
+            systemInstruction: finalInstruction,
+            temperature: 0.7,
+          },
+        });
+
+        for await (const chunk of responseStream) {
+          if (chunk.text) {
+            res.write(`data: ${JSON.stringify({ text: chunk.text })}\n\n`);
+          }
+        }
+        res.write("data: [DONE]\n\n");
+        res.end();
+      } catch (err) {
+        console.error("Stream generation error:", err);
+        res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+        res.end();
+      }
+    } catch (err) {
+      console.error(err);
+      if (!res.headersSent) res.status(500).json({ error: err.message });
+      else res.end();
     }
   });
 
@@ -788,7 +958,7 @@ ACTION>>>`;
             contents: query,
             config: {
               tools: [{ googleSearch: {} }],
-              systemInstruction: "You are Astra Search Intelligence. Provide verified, up-to-date information grounded by Google Search data. Always cite sources clearly.",
+              systemInstruction: "You are Vishal AI Search Intelligence. Provide verified, up-to-date information grounded by Google Search data. Always cite sources clearly.",
             },
           });
 
@@ -831,7 +1001,7 @@ ACTION>>>`;
           console.warn("[Search Grounding API Error]:", apiErr?.message || apiErr);
           // Return resilient grounding response
           return res.json({
-            text: `### Verified Intelligence Summary: ${query}\n\nLive search grounding indicates active real-time indexing. Information has been processed by Astra's verified web cache.\n\n* **Status**: Live data indexed\n* **Topic**: ${query}\n* **Source**: Web intelligence network`,
+            text: `### Verified Intelligence Summary: ${query}\n\nLive search grounding indicates active real-time indexing. Information has been processed by Vishal AI's verified web cache.\n\n* **Status**: Live data indexed\n* **Topic**: ${query}\n* **Source**: Web intelligence network`,
             searchSources: [
               { title: "Google Search Knowledge Graph", url: "https://www.google.com/search?q=" + encodeURIComponent(query) },
               { title: "Google Cloud Technical Index", url: "https://cloud.google.com" },
@@ -870,11 +1040,11 @@ ACTION>>>`;
       const targetModel = allowedModels.includes(model) ? model : "gemini-3.5-flash";
 
       const personaInstructions: Record<string, string> = {
-        assistant: "You are Astra, the user's primary personal AI assistant across macOS, Windows, Linux, Android, and Web. You are concise, proactive, highly capable, and dedicated exclusively to your owner.",
-        architect: "You are Astra Systems Architect. You are an expert in full-stack architecture, distributed cloud systems, cross-platform OS internals, design patterns, and clean maintainable code.",
-        security: "You are Astra Zero-Trust Security Officer. You specialize in access control levels (1-5), local system safety, biometric safeguards, authorization verification, and threat mitigation.",
-        creative: "You are Astra Creative Director. You specialize in visual aesthetics, video/audio production direction, evocative copy, and creative idea generation.",
-        researcher: "You are Astra Research Analyst. You specialize in rigorous analytical synthesis, scientific breakdowns, multi-source fact checking, and structured executive summaries.",
+        assistant: "You are Vishal AI, the user's primary personal AI assistant across macOS, Windows, Linux, Android, and Web. You are concise, proactive, highly capable, and dedicated exclusively to your owner.",
+        architect: "You are Vishal AI Systems Architect. You are an expert in full-stack architecture, distributed cloud systems, cross-platform OS internals, design patterns, and clean maintainable code.",
+        security: "You are Vishal AI Zero-Trust Security Officer. You specialize in access control levels (1-5), local system safety, biometric safeguards, authorization verification, and threat mitigation.",
+        creative: "You are Vishal AI Creative Director. You specialize in visual aesthetics, video/audio production direction, evocative copy, and creative idea generation.",
+        researcher: "You are Vishal AI Research Analyst. You specialize in rigorous analytical synthesis, scientific breakdowns, multi-source fact checking, and structured executive summaries.",
       };
 
       const systemInstruction = personaInstructions[rolePersona] || personaInstructions.assistant;
@@ -988,7 +1158,7 @@ ACTION>>>`;
         <circle cx="400" cy="400" r="300" fill="url(#glow)"/>
         <circle cx="400" cy="400" r="180" fill="none" stroke="#38bdf8" stroke-width="2" stroke-dasharray="8,8"/>
         <circle cx="400" cy="400" r="120" fill="#0369a1" fill-opacity="0.3" stroke="#7dd3fc" stroke-width="3"/>
-        <text x="400" y="380" fill="#f8fafc" font-family="system-ui, sans-serif" font-size="28" font-weight="bold" text-anchor="middle">ASTRA AI STUDIO</text>
+        <text x="400" y="380" fill="#f8fafc" font-family="system-ui, sans-serif" font-size="28" font-weight="bold" text-anchor="middle">VISHALAI AI STUDIO</text>
         <text x="400" y="420" fill="#bae6fd" font-family="system-ui, sans-serif" font-size="16" text-anchor="middle">${cleanPrompt}</text>
         <text x="400" y="460" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="12" text-anchor="middle">Rendered via gemini-3.1-flash-image-preview</text>
       </svg>`;
@@ -1095,7 +1265,7 @@ ACTION>>>`;
 
       // Fallback transcription acknowledgment
       res.json({
-        transcription: `[Audio Stream Verified]: "Astra, activate workstation security protocol and summarize latest terminal logs." (Transcribed via gemini-3.5-transcribe engine)`,
+        transcription: `[Audio Stream Verified]: "Vishal AI, activate workstation security protocol and summarize latest terminal logs." (Transcribed via gemini-3.5-transcribe engine)`,
         modelUsed: "gemini-3.5-transcribe (local-processor)",
       });
     } catch (err: any) {
@@ -1382,7 +1552,7 @@ ACTION>>>`;
             speechConfig: {
               voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } },
             },
-            systemInstruction: "You are Astra, the user's personal cross-platform AI assistant. Be concise, vocal, smart, and direct.",
+            systemInstruction: "You are Vishal AI, the user's personal cross-platform AI assistant. Be concise, vocal, smart, and direct.",
           },
           callbacks: {
             onmessage: (message: any) => {
